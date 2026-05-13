@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GA4 Parser — AZ-Sort</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,300;1,9..144,700&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cream:      #faf7f2;
+    --cream2:     #f2ece2;
+    --white:      #ffffff;
+    --black:      #1a1714;
+    --text:       #2a2420;
+    --muted:      #7a6f68;
+    --muted2:     #b0a49c;
+    --terra:      #c45c3a;
+    --terra-soft: #faf0ec;
+    --terra-mid:  #d97050;
+    --border:     #e4ddd4;
+    --border2:    #cec5ba;
+    --green:      #1f6b40;
+    --red:        #a83030;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--cream);
+    background-image: radial-gradient(circle, #c8c4bc 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-attachment: fixed;
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+
+  nav {
+    background: transparent;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    padding: 0 32px;
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 50;
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  nav.scrolled {
+    background: var(--black);
+    box-shadow: 0 1px 0 rgba(196,92,58,0.5);
+  }
+
+  .nav-inner {
+    width: 100%;
+    max-width: 680px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .wordmark {
+    font-family: 'Fraunces', serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: -0.02em;
+    text-decoration: none;
+  }
+
+  .wordmark em { font-style: italic; color: var(--terra-mid); font-weight: 300; }
+
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+
+  .nav-back {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  .nav-back:hover { color: var(--terra-mid); }
+
+  .nav-tag {
+    font-size: 10px;
+    font-weight: 500;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+  }
+
+  .hero-strip {
+    background: var(--black);
+    padding: 80px 24px 56px;
+    position: relative;
+    overflow: hidden;
+    border-bottom: 2px solid var(--terra);
+  }
+
+  .hero-strip-inner {
+    max-width: 680px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+  }
+
+  .hero-strip-glow {
+    position: absolute;
+    bottom: -120px; right: -120px;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(196,92,58,0.2) 0%, transparent 60%);
+    pointer-events: none;
+    z-index: 0;
+    transition: transform 0.6s cubic-bezier(0.16,1,0.3,1);
+  }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--terra-mid);
+    margin-bottom: 12px;
+    animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.05s both;
+  }
+
+  .eyebrow::before {
+    content: '';
+    display: block;
+    width: 18px;
+    height: 1.5px;
+    background: var(--terra-mid);
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 36px;
+    font-weight: 700;
+    line-height: 1.08;
+    letter-spacing: -0.02em;
+    color: var(--white);
+    margin-bottom: 10px;
+    animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.15s both;
+  }
+
+  h1 em { font-style: italic; color: var(--terra-mid); font-weight: 300; }
+
+  .hero-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,0.4);
+    font-weight: 300;
+    line-height: 1.65;
+    animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.25s both;
+  }
+
+  main {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+    animation: fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.35s both;
+  }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-top: 3px solid var(--terra);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 6px 24px rgba(0,0,0,0.07);
+    margin-bottom: 16px;
+  }
+
+  .card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .card-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted2);
+  }
+
+  .card-body { padding: 16px 20px; }
+
+  /* Month input */
+  .month-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .field-group { display: flex; flex-direction: column; gap: 6px; }
+
+  .field-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted2);
+  }
+
+  input[type="text"], select {
+    padding: 9px 12px;
+    font-size: 13px;
+    font-family: 'DM Mono', monospace;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--cream);
+    color: var(--text);
+    outline: none;
+    transition: border-color 0.15s;
+    width: 100%;
+  }
+
+  input[type="text"]:focus, select:focus { border-color: var(--terra); }
+  input[type="text"]::placeholder { color: var(--muted2); }
+
+  /* File slots */
+  .file-slots { display: flex; flex-direction: column; gap: 8px; }
+
+  .file-slot {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    background: var(--cream);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .file-slot:hover { border-color: var(--terra); background: var(--terra-soft); }
+  .file-slot.loaded { border-color: var(--green); background: rgba(31,107,64,0.04); }
+
+  .slot-icon {
+    width: 28px; height: 28px;
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    flex-shrink: 0;
+    background: var(--border);
+    color: var(--muted);
+    transition: background 0.15s, color 0.15s;
+  }
+
+  .file-slot.loaded .slot-icon { background: rgba(31,107,64,0.12); color: var(--green); }
+  .file-slot:hover:not(.loaded) .slot-icon { background: var(--terra-soft); color: var(--terra); }
+
+  .slot-info { flex: 1; min-width: 0; }
+
+  .slot-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 1px;
+  }
+
+  .slot-desc {
+    font-size: 10px;
+    color: var(--muted2);
+    font-family: 'DM Mono', monospace;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .slot-status {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    color: var(--muted2);
+    flex-shrink: 0;
+  }
+
+  .file-slot.loaded .slot-status { color: var(--green); }
+
+  /* Drop zone */
+  .drop-zone {
+    border: 1.5px dashed var(--border2);
+    border-radius: 8px;
+    padding: 36px 20px;
+    background: var(--cream);
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+
+  .drop-zone:hover, .drop-zone.drag-over {
+    background: var(--terra-soft);
+    border-color: var(--terra);
+  }
+
+  .drop-icon {
+    width: 36px; height: 36px;
+    margin: 0 auto 12px;
+    border: 1px solid var(--border2);
+    border-radius: 50%;
+    background: var(--white);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px; color: var(--muted);
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .drop-zone:hover .drop-icon,
+  .drop-zone.drag-over .drop-icon { border-color: var(--terra); color: var(--terra); }
+
+  .drop-title { font-size: 13px; font-weight: 500; color: var(--text); margin-bottom: 4px; }
+  .drop-hint  { font-size: 11px; color: var(--muted2); font-family: 'DM Mono', monospace; }
+
+  /* Detected list */
+  .detected-list { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+
+  .detected-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    font-size: 12px;
+    animation: chipIn 0.2s ease both;
+  }
+
+  @keyframes chipIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .detected-item.ok  { background: rgba(31,107,64,0.04); border-color: rgba(31,107,64,0.2); }
+  .detected-item.err { background: rgba(168,48,48,0.04); border-color: rgba(168,48,48,0.2); }
+
+  .detected-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .detected-item.ok  .detected-dot { background: var(--green); }
+  .detected-item.err .detected-dot { background: var(--red); }
+
+  .detected-label { font-weight: 600; color: var(--text); flex-shrink: 0; min-width: 200px; font-family: 'DM Mono', monospace; font-size: 11px; }
+  .detected-file  { color: var(--muted2); font-family: 'DM Mono', monospace; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  input[type="file"] { display: none; }
+
+  /* Buttons */
+  .btn-run {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 10px 22px;
+    background: var(--terra); color: var(--white);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    border: none; border-radius: 6px; cursor: pointer;
+    transition: opacity 0.12s, transform 0.1s;
+    width: 100%; justify-content: center;
+  }
+
+  .btn-run:hover { opacity: 0.88; transform: translateY(-1px); }
+  .btn-run:active { transform: none; }
+  .btn-run:disabled { background: var(--border); color: var(--muted2); cursor: not-allowed; transform: none; opacity: 1; }
+
+  .btn-dl {
+    display: none; align-items: center; gap: 6px;
+    padding: 10px 22px;
+    background: var(--black); color: var(--white);
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    border: none; border-radius: 6px; cursor: pointer; text-decoration: none;
+    transition: opacity 0.12s, transform 0.1s;
+    width: 100%; justify-content: center; margin-top: 8px;
+  }
+
+  .btn-dl.visible { display: inline-flex; }
+  .btn-dl:hover { opacity: 0.82; transform: translateY(-1px); }
+
+  /* Progress */
+  .prog-wrap { display: none; margin-bottom: 12px; }
+  .prog-wrap.visible { display: block; }
+  .prog-track { height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+  .prog-fill  { height: 100%; background: var(--terra); width: 0%; transition: width 0.25s ease; }
+  .prog-label { font-size: 10px; color: var(--muted2); margin-top: 5px; font-family: 'DM Mono', monospace; }
+
+  /* Status */
+  .status-wrap { display: none; margin-bottom: 12px; }
+  .status-wrap.visible { display: block; }
+  .status-msg {
+    font-size: 12px; color: var(--muted);
+    padding: 9px 12px; background: var(--cream);
+    border-left: 2px solid var(--border2); border-radius: 2px;
+    font-family: 'DM Mono', monospace;
+  }
+  .status-msg.ok  { border-left-color: var(--green); color: var(--green); }
+  .status-msg.err { border-left-color: var(--red);   color: var(--red); }
+
+  /* Preview table */
+  .preview-wrap { margin-top: 8px; display: none; }
+  .preview-wrap.visible { display: block; }
+
+  .preview-section { margin-bottom: 16px; }
+
+  .preview-section-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted2);
+    margin-bottom: 6px;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .preview-table-wrap { overflow-x: auto; border-radius: 6px; border: 1px solid var(--border); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  th {
+    padding: 6px 10px; text-align: left;
+    background: var(--cream2); color: var(--muted2);
+    font-family: 'DM Mono', monospace; font-size: 9px;
+    text-transform: uppercase; letter-spacing: 0.07em;
+    border-bottom: 1px solid var(--border); white-space: nowrap;
+  }
+  td {
+    padding: 5px 10px; border-bottom: 1px solid var(--border);
+    font-family: 'DM Mono', monospace; color: var(--text);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--cream2); }
+
+  footer {
+    background: var(--black);
+    border-top: 2px solid var(--terra);
+    padding: 28px 32px;
+    margin-top: 40px;
+  }
+
+  .footer-inner {
+    max-width: 680px;
+    margin: 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-wordmark {
+    font-family: 'Fraunces', serif;
+    font-size: 16px; font-weight: 700;
+    letter-spacing: -0.02em;
+    color: rgba(255,255,255,0.35);
+    text-decoration: none;
+  }
+
+  .footer-wordmark em { font-style: italic; font-weight: 300; color: var(--terra-mid); }
+  .footer-note { font-family: 'DM Mono', monospace; font-size: 10px; color: rgba(255,255,255,0.18); }
+</style>
+</head>
+<body>
+
+<nav id="mainNav">
+  <div class="nav-inner">
+    <a class="wordmark" href="https://az-sort.github.io/HomePage/">az<em>-</em>sort</a>
+    <div class="nav-right">
+      <a class="nav-back" href="https://az-sort.github.io/HomePage/">← All tools</a>
+      <span class="nav-tag">GA4 utility</span>
+    </div>
+  </div>
+</nav>
+
+<div class="hero-strip" id="heroStrip">
+  <div class="hero-strip-glow" id="heroGlow"></div>
+  <div class="hero-strip-inner">
+    <div class="eyebrow">GA4 utility</div>
+    <h1>GA4 <em>Report Parser.</em></h1>
+    <p class="hero-desc">Upload the 7 GA4 export CSVs and get a formatted Excel sheet ready to paste into the master file.</p>
+  </div>
+</div>
+
+<main>
+
+  <!-- SETTINGS -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Report settings</span>
+    </div>
+    <div class="card-body">
+      <div class="month-row">
+        <div class="field-group">
+          <span class="field-label">Month (sheet name)</span>
+          <input type="text" id="monthInput" placeholder="e.g. 04_APR" maxlength="10">
+        </div>
+        <div class="field-group">
+          <span class="field-label">Month number</span>
+          <input type="text" id="monthNumInput" placeholder="e.g. 04" maxlength="2">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILE UPLOADS -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Upload GA4 CSV files</span>
+    </div>
+    <div class="card-body">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".csv" multiple>
+        <div class="drop-icon">↑</div>
+        <div class="drop-title">Drop all 7 CSV files here</div>
+        <div class="drop-hint">or click to browse — files are detected automatically</div>
+      </div>
+      <div class="detected-list" id="detectedList"></div>
+    </div>
+  </div>
+
+  <!-- ACTIONS -->
+  <div class="card">
+    <div class="card-header">
+      <span class="card-title">Generate</span>
+    </div>
+    <div class="card-body">
+      <div class="prog-wrap" id="progWrap">
+        <div class="prog-track"><div class="prog-fill" id="progFill"></div></div>
+        <div class="prog-label" id="progLabel">Processing...</div>
+      </div>
+      <div class="status-wrap" id="statusWrap">
+        <div class="status-msg" id="statusMsg"></div>
+      </div>
+      <button class="btn-run" id="runBtn" disabled onclick="generate()">Generate Excel →</button>
+      <a class="btn-dl" id="dlBtn">↓ Download</a>
+
+      <div class="preview-wrap" id="previewWrap"></div>
+    </div>
+  </div>
+
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <a class="footer-wordmark" href="https://az-sort.github.io/HomePage/">az<em>-</em>sort</a>
+    <span class="footer-note">github.com/az-sort</span>
+  </div>
+</footer>
+
+<script>
+  // ── State ──────────────────────────────────────────
+  const files = {};
+  const REQUIRED = ['01','02','03','04','05','06','upd'];
+
+  const FILE_LABELS = {
+    '01':  'Sessions by Source/Medium',
+    '02':  'Sessions by Campaign',
+    '03':  'Site Visitors by Source/Medium',
+    '04':  'Platform Visitors by Page',
+    '05':  "Users' Personal Interests",
+    '06':  'Conversions by Event & Source',
+    'upd': 'Users Per Day',
+  };
+
+  // Detection signatures — first non-comment data header line
+  function detectFileType(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    if (!lines.length) return null;
+
+    // Look for the first header line
+    for (const line of lines.slice(0, 15)) {
+      if (line.startsWith('Session source / medium,')) return '01';
+      if (line.startsWith('Session campaign,'))         return '02';
+      if (line.startsWith('Segment,First Visit,'))      return '03';
+      if (line.startsWith('Segment,Google CPC,'))       return '04';
+      if (line.startsWith('Interests,Active users,'))   return '05';
+      if (line.startsWith('Event name,Campaign,'))      return '06';
+      if (line.startsWith('Nth day,Active users'))      return 'upd';
+      // Users_per_day has multiple sections — check for "Reports snapshot" comment
+    }
+
+    // Users_per_day.csv special case — identified by # Reports snapshot comment
+    if (text.includes('# Reports snapshot') || text.includes('Nth day,Active users')) return 'upd';
+
+    return null;
+  }
+
+  // ── Nav + parallax ─────────────────────────────────
+  const mainNav = document.getElementById('mainNav');
+  window.addEventListener('scroll', () => {
+    mainNav.classList.toggle('scrolled', window.scrollY > 10);
+  }, { passive: true });
+
+  const heroGlow  = document.getElementById('heroGlow');
+  const heroStrip = document.getElementById('heroStrip');
+  heroStrip.addEventListener('mousemove', e => {
+    const rect = heroStrip.getBoundingClientRect();
+    heroGlow.style.transform = `translate(${(e.clientX/rect.width - 0.5)*-36}px, ${(e.clientY/rect.height - 0.5)*-24}px)`;
+  });
+  heroStrip.addEventListener('mouseleave', () => { heroGlow.style.transform = 'translate(0,0)'; });
+
+  // ── Drop zone ───────────────────────────────────────
+  const dropZone  = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+  dropZone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => handleFiles(fileInput.files));
+
+  function handleFiles(fileList) {
+    Array.from(fileList).forEach(file => {
+      if (!file.name.endsWith('.csv')) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        const text = e.target.result;
+        const key  = detectFileType(text);
+        if (!key) {
+          addDetectedItem(null, file.name, 'Unrecognised file — skipped');
+          return;
+        }
+        files[key] = { name: file.name, text };
+        renderDetectedList();
+        updateRunBtn();
+      };
+      reader.readAsText(file);
+    });
+  }
+
+  function renderDetectedList() {
+    const list = document.getElementById('detectedList');
+    list.innerHTML = '';
+    REQUIRED.forEach((key, i) => {
+      const item = document.createElement('div');
+      const loaded = !!files[key];
+      item.className = `detected-item ${loaded ? 'ok' : 'err'}`;
+      item.style.animationDelay = `${i * 30}ms`;
+      item.innerHTML = `
+        <div class="detected-dot"></div>
+        <div class="detected-label">${FILE_LABELS[key]}</div>
+        <div class="detected-file">${loaded ? files[key].name : 'not yet loaded'}</div>
+      `;
+      list.appendChild(item);
+    });
+  }
+
+  // ── Helpers ────────────────────────────────────────
+  function addDetectedItem(key, filename, note) {
+    const list = document.getElementById('detectedList');
+    const item = document.createElement('div');
+    item.className = 'detected-item err';
+    item.innerHTML = `<div class="detected-dot"></div><div class="detected-label">${note}</div><div class="detected-file">${filename}</div>`;
+    list.appendChild(item);
+  }
+
+  function setStatus(msg, type = '') {
+    const wrap = document.getElementById('statusWrap');
+    const el   = document.getElementById('statusMsg');
+    wrap.className = 'status-wrap visible';
+    el.className   = 'status-msg' + (type ? ' ' + type : '');
+    el.textContent = msg;
+  }
+
+  function setProgress(pct, label = '') {
+    const wrap = document.getElementById('progWrap');
+    wrap.className = 'prog-wrap visible';
+    document.getElementById('progFill').style.width = pct + '%';
+    if (label) document.getElementById('progLabel').textContent = label;
+  }
+
+  function updateRunBtn() {
+    const hasAny      = REQUIRED.some(k => files[k]);
+    const hasMonth    = document.getElementById('monthInput').value.trim();
+    const hasMonthNum = document.getElementById('monthNumInput').value.trim();
+    document.getElementById('runBtn').disabled = !(hasAny && hasMonth && hasMonthNum);
+  }
+
+  document.getElementById('monthInput').addEventListener('input', updateRunBtn);
+  document.getElementById('monthNumInput').addEventListener('input', updateRunBtn);
+
+  // ── Shared utilities ───────────────────────────────
+
+  // CSV parser — handles quoted fields and trailing commas
+  function parseCSV(text) {
+    const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
+    return lines.map(line => {
+      const result = [];
+      let cur = '', inQuote = false;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') { inQuote = !inQuote; }
+        else if (line[i] === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
+        else { cur += line[i]; }
+      }
+      result.push(cur.trim());
+      return result;
+    });
+  }
+
+  // Sanitise a cell value — converts NaN/null/undefined to empty string
+  const clean = (v) => {
+    if (v === undefined || v === null) return '';
+    const s = String(v).trim();
+    if (s === '' || s.toLowerCase() === 'nan') return '';
+    return s;
+  };
+
+  // Find a header row by matching col 0 case-insensitively, return its index or -1
+  function findRow(rows, match) {
+    const m = match.toLowerCase().trim();
+    return rows.findIndex(r => r[0] && r[0].toLowerCase().trim() === m);
+  }
+
+  // Detect grand total row — a row where col 0 is blank/empty and col 1 is a large number,
+  // OR col last is "Grand total". Returns true if it looks like a totals row to skip.
+  function isGrandTotal(row) {
+    if (!row || !row.length) return false;
+    const last = (row[row.length - 1] || '').toLowerCase().trim();
+    if (last === 'grand total') return true;
+    // blank first cell + numeric second cell = totals row
+    if ((!row[0] || row[0].trim() === '') && row[1] && !isNaN(parseFloat(row[1]))) return true;
+    return false;
+  }
+
+  // Given a header row index, find where actual data rows begin
+  // by skipping any subsequent rows that are sub-headers (non-numeric col 1) or grand totals
+  function findDataStart(rows, headerIdx) {
+    let i = headerIdx + 1;
+    while (i < rows.length) {
+      const row = rows[i];
+      if (!row || !row[0]) { i++; continue; }
+      if (isGrandTotal(row)) { i++; continue; }
+      // if col 1 is non-numeric and non-empty it's likely a sub-header row — skip it
+      const col1 = (row[1] || '').trim();
+      if (col1 && isNaN(parseFloat(col1))) { i++; continue; }
+      break;
+    }
+    return i;
+  }
+
+  // Is this row a footer / end-of-data row?
+  function isFooter(row) {
+    if (!row || !row[0]) return true;
+    const v = row[0].trim();
+    if (v === '') return true;
+    // Source footer rows
+    if (/^(source:|weighted by:|the nielsen)/i.test(v)) return true;
+    return false;
+  }
+
+  // ── Section parsers ────────────────────────────────
+
+  // 01.csv — Sessions by Source/Medium
+  // Rules: top 5, min 1000 sessions, exclude bracketed/unavailable sources
+  function parse01() {
+    const rows = parseCSV(files['01'].text);
+    const hIdx = findRow(rows, 'Session source / medium');
+    if (hIdx === -1) return [];
+    const dataStart = findDataStart(rows, hIdx);
+
+    const EXCLUDE_PATTERNS = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
+    const candidates = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const source = row[0].trim();
+      if (EXCLUDE_PATTERNS.some(p => source.toLowerCase().includes(p))) continue;
+      const sessions = parseFloat(row[1]) || 0;
+      if (sessions < 1000) continue;
+      candidates.push({ sessions, row });
+    }
+    candidates.sort((a, b) => b.sessions - a.sessions);
+    return candidates.slice(0, 5).map(({ row: r }) => {
+      const sessions   = parseFloat(r[1]) || 0;
+      const firstVisit = parseFloat(r[4]) || 0;
+      const pctFirst   = sessions > 0 ? firstVisit / sessions : '';
+      return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), pctFirst !== '' ? pctFirst : ''];
+    });
+  }
+
+  // 02.csv — Sessions by Campaign
+  // Rules: top 5, min 1000, exclude generic bracketed campaigns
+  function parse02() {
+    const rows = parseCSV(files['02'].text);
+    const hIdx = findRow(rows, 'Session campaign');
+    if (hIdx === -1) return [];
+    const dataStart = findDataStart(rows, hIdx);
+
+    const EXCLUDE = ['(referral)', '(organic)', '(direct)', '(cross-network)', '(not set)'];
+    const candidates = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const campaign = row[0].trim();
+      if (EXCLUDE.some(e => campaign.toLowerCase() === e.toLowerCase())) continue;
+      const sessions = parseFloat(row[1]) || 0;
+      if (sessions < 1000) continue;
+      candidates.push({ sessions, row });
+    }
+    candidates.sort((a, b) => b.sessions - a.sessions);
+    return candidates.slice(0, 5).map(({ row: r }) => {
+      const sessions   = parseFloat(r[1]) || 0;
+      const firstVisit = parseFloat(r[4]) || 0;
+      const pctFirst   = sessions > 0 ? firstVisit / sessions : '';
+      return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), pctFirst !== '' ? pctFirst : ''];
+    });
+  }
+
+  // 03.csv — Site Visitors by Source/Medium (First Visit / Returning / Converters)
+  // Rules: top 5 by First Visit sessions, min 1000, exclude bracketed sources
+  function parse03() {
+    const rows = parseCSV(files['03'].text);
+    const hIdx = findRow(rows, 'Session source / medium');
+    if (hIdx === -1) return [];
+
+    // Grand total row is immediately after the header — col 7 = total converters sessions
+    const grandTotalRow = rows[hIdx + 1] || [];
+    const totalConverters = parseFloat(grandTotalRow[7]) || 0;
+
+    const dataStart = findDataStart(rows, hIdx);
+
+    const EXCLUDE_PATTERNS = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
+    const candidates = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const source = row[0].trim();
+      if (EXCLUDE_PATTERNS.some(p => source.toLowerCase().includes(p))) continue;
+      const sessions = parseFloat(row[1]) || 0;
+      if (sessions < 1000) continue;
+      candidates.push({ sessions, row });
+    }
+    candidates.sort((a, b) => b.sessions - a.sessions);
+
+    return candidates.slice(0, 5).map(({ row: r }) => {
+      const convertersSessions = parseFloat(r[7]) || 0;
+      // Conversion rate = converters sessions / grand total converters (matches master formula)
+      const conversionRate = totalConverters > 0 ? convertersSessions / totalConverters : '';
+      return [
+        clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]),
+        clean(r[4]), clean(r[5]), clean(r[6]),
+        clean(r[7]), clean(r[8]),
+        conversionRate !== '' ? conversionRate : ''
+      ];
+    });
+  }
+
+  // 04.csv — Platform Visitors by Page
+  // Rules: top 5 by Google CPC sessions (col 1), sorted descending
+  // Detects segment columns dynamically by reading the Segment header row
+  function parse04() {
+    const rows = parseCSV(files['04'].text);
+    const hIdx = findRow(rows, 'Page title');
+    if (hIdx === -1) return [];
+
+    // The Segment row is the one BEFORE "Page title" that contains platform names
+    // Find it by looking for the row with "Google CPC" or similar in its cols
+    let segRow = null;
+    for (let i = Math.max(0, hIdx - 3); i < hIdx; i++) {
+      if (rows[i] && rows[i].some(c => c && /google.?cpc|facebook|instagram/i.test(c))) {
+        segRow = rows[i]; break;
+      }
+    }
+
+    // Build column groups dynamically from segRow if found
+    // Each group: { label, colStart }
+    let colGroups = null;
+    if (segRow) {
+      colGroups = [];
+      let curLabel = null, curStart = null;
+      for (let c = 1; c < segRow.length; c++) {
+        const v = (segRow[c] || '').trim();
+        if (v && v !== curLabel) {
+          if (curLabel) colGroups.push({ label: curLabel, colStart: curStart });
+          curLabel = v; curStart = c;
+        }
+      }
+      if (curLabel) colGroups.push({ label: curLabel, colStart: curStart });
+    }
+
+    const dataStart = findDataStart(rows, hIdx);
+    const candidates = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const sessions = parseFloat(row[1]) || 0; // col 1 = first platform's sessions
+      candidates.push({ sessions, row });
+    }
+    candidates.sort((a, b) => b.sessions - a.sessions);
+
+    return candidates.slice(0, 5).map(({ row: r }) =>
+      Array.from({ length: 13 }, (_, i) => clean(r[i] || ''))
+    );
+  }
+
+  // 05.csv — Users' Personal Interests
+  // Rules: always top 15 by active users
+  function parse05() {
+    const rows = parseCSV(files['05'].text);
+    const hIdx = findRow(rows, 'Interests');
+    if (hIdx === -1) return [];
+    const dataStart = findDataStart(rows, hIdx);
+
+    const candidates = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const users = parseFloat(row[1]) || 0;
+      candidates.push({ users, row });
+    }
+    candidates.sort((a, b) => b.users - a.users);
+    return candidates.slice(0, 15).map(({ row: r }) =>
+      [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5])]
+    );
+  }
+
+  // 06.csv — Conversions by Event + by Source/Medium
+  // Link_Click_ events aggregated; all sources aggregated with case normalisation
+  // Grand total row detected dynamically rather than hardcoded skip
+  function parse06() {
+    const rows = parseCSV(files['06'].text);
+    const hIdx = findRow(rows, 'Event name');
+    if (hIdx === -1) return { byEvent: [], bySource: [] };
+    const dataStart = findDataStart(rows, hIdx);
+
+    // Find which column index holds "Source / medium" and "Key events"
+    const hRow = rows[hIdx] || [];
+    const srcCol = hRow.findIndex(c => c && /source.*medium/i.test(c));
+    const valCol = hRow.findIndex(c => c && /key.?event/i.test(c));
+    const srcColFinal = srcCol !== -1 ? srcCol : 2;
+    const valColFinal = valCol !== -1 ? valCol : 3;
+
+    const byEventMap = {};
+    const bySourceMap = {};
+
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row || (!row[0] && !row[srcColFinal])) continue;
+      const event  = (row[0] || '').trim();
+      const source = (row[srcColFinal] || '').trim();
+      const val    = parseFloat(row[valColFinal]) || 0;
+      if (!event && !source) continue;
+
+      // Link_Click_ events — case-insensitive prefix match
+      if (event && event.toLowerCase().startsWith('link_click_')) {
+        byEventMap[event] = (byEventMap[event] || 0) + val;
+      }
+
+      // All sources — normalise Facebook / Social case variants
+      if (source) {
+        const normSource = source.toLowerCase() === 'facebook / social' ? 'Facebook / Social' : source;
+        bySourceMap[normSource] = (bySourceMap[normSource] || 0) + val;
+      }
+    }
+
+    return {
+      byEvent:  Object.entries(byEventMap).map(([k, v]) => [k, v]),
+      bySource: Object.entries(bySourceMap).map(([k, v]) => [k, v]),
+    };
+  }
+
+  // Users per day — finds "Nth day,Active users" block dynamically, stops at next blank/comment
+  function parseUpd() {
+    const lines = files['upd'].text.split('\n');
+    let inBlock = false;
+    const out = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('#') || trimmed === '') {
+        if (inBlock) break;
+        continue;
+      }
+      // Case-insensitive header match
+      if (/^nth.?day,active.?users$/i.test(trimmed)) { inBlock = true; continue; }
+      if (!inBlock) continue;
+
+      const parts = trimmed.split(',');
+      if (parts.length < 2) break;
+      const day = parseInt(parts[0]) + 1;
+      const users = parts[1].trim();
+      out.push([day, users]);
+    }
+    return out;
+  }
+
+  // ── Build Excel ────────────────────────────────────
+  async function generate() {
+    const monthLabel  = document.getElementById('monthInput').value.trim();
+    const monthNum    = document.getElementById('monthNumInput').value.trim();
+
+    setProgress(5, 'Parsing files...');
+    document.getElementById('dlBtn').className = 'btn-dl';
+    document.getElementById('statusWrap').className = 'status-wrap';
+    await tick();
+
+    try {
+      const data01 = files['01'] ? parse01(monthNum) : null;
+      setProgress(20, 'Sessions by Source/Medium...');  await tick();
+      const data02 = files['02'] ? parse02(monthNum) : null;
+      setProgress(30, 'Sessions by Campaign...');       await tick();
+      const data03 = files['03'] ? parse03(monthNum) : null;
+      setProgress(40, 'Site Visitors...');              await tick();
+      const data04 = files['04'] ? parse04(monthNum) : null;
+      setProgress(50, 'Platform Visitors by Page...');  await tick();
+      const data05 = files['05'] ? parse05() : null;
+      setProgress(60, 'User Interests...');             await tick();
+      const conv   = files['06'] ? parse06() : null;
+      const byEvent  = conv ? conv.byEvent  : null;
+      const bySource = conv ? conv.bySource : null;
+      setProgress(70, 'Conversions...');                await tick();
+      const dataUpd = files['upd'] ? parseUpd() : null;
+      setProgress(80, 'Users Per Day...');              await tick();
+
+      // Build worksheet data (same layout as master file)
+      const wsData = [];
+      const addRow = (...cells) => wsData.push(cells.map(c => san(c)));
+      const addBlank = () => wsData.push([]);
+
+      const NOT_FOUND = [['Data not found']];
+      const san = (v) => (v === undefined || v === null || (typeof v === 'string' && v.toLowerCase() === 'nan')) ? '' : v;
+
+      // SESSIONS BY SOURCE/MEDIUM
+      addRow('SESSIONS BY SOURCE/MEDIUM', 'Sessions', 'Engaged sessions', 'Engagement rate', 'First visits', 'Bounce rate', '% of First visits');
+      (data01 || NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // SESSIONS BY CAMPAIGN
+      addRow('SESSIONS BY CAMPAIGN', 'Sessions', 'Engaged sessions', 'Engagement rate', 'First visits', 'Bounce rate', '% of First visits');
+      (data02 || NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // SITE VISITORS BY SOURCE/MEDIUM
+      addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '', 'Converters', '', '');
+      addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Conversion Rate');
+      (data03 || NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // PLATFORM VISITORS BY PAGE
+      addRow('PLATFORM VISITORS BY PAGE', 'Google CPC', '', '', '', 'FacebookInstagram', '', '', '', 'Google Organic', '', '', '');
+      addRow('Page title', 'Sessions', 'First visits', 'Returning users', 'Conversions', 'Sessions', 'First visits', 'Returning users', 'Conversions', 'Sessions', 'First visits', 'Returning users', 'Conversions');
+      (data04 || NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // USERS' PERSONAL INTERESTS
+      addRow("USERS' PERSONAL INTERESTS", 'Users', 'New users', 'Engaged sessions', 'Engagement rate', 'Conversions');
+      (data05 || NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // CONVERSIONS BY EVENT
+      addRow('CONVERSIONS BY EVENT', 'Conversions');
+      (byEvent ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
+      addBlank();
+
+      // CONVERSIONS BY SOURCE/MEDIUM
+      addRow('CONVERSIONS BY SOURCE/MEDIUM', 'Conversions');
+      (bySource ? bySource.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
+
+      setProgress(90, 'Building Excel file...'); await tick();
+
+      const wb = XLSX.utils.book_new();
+
+      // Monthly sheet
+      const ws = XLSX.utils.aoa_to_sheet(wsData);
+      ws['!cols'] = [{ wch: 60 }, { wch: 14 }, { wch: 18 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 18 }, { wch: 16 }];
+      XLSX.utils.book_append_sheet(wb, ws, monthLabel);
+
+      // Users Per Day sheet
+      const updData = dataUpd ? [['Day', 'Active Users'], ...dataUpd] : [['Day', 'Active Users'], ['Data not found', '']];
+      const wsUpd = XLSX.utils.aoa_to_sheet(updData);
+      wsUpd['!cols'] = [{ wch: 8 }, { wch: 14 }];
+      XLSX.utils.book_append_sheet(wb, wsUpd, 'Users Per Day');
+
+      setProgress(100, 'Done');
+
+      const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
+      const dlBtn = document.getElementById('dlBtn');
+      dlBtn.href = URL.createObjectURL(blob);
+      dlBtn.download = `GA4_${monthLabel}.xlsx`;
+      dlBtn.className = 'btn-dl visible';
+
+      const missing = REQUIRED.filter(k => !files[k]).map(k => FILE_LABELS[k]);
+      const statusMsg = missing.length
+        ? `Done — ${monthLabel} generated. Missing sections marked "Data not found": ${missing.join(', ')}.`
+        : `Done — ${monthLabel} sheet + Users Per Day ready.`;
+      setStatus(statusMsg, missing.length ? '' : 'ok');
+
+      showPreview({ data01, data02, data03, data04, data05, byEvent, bySource, dataUpd });
+
+    } catch (err) {
+      setStatus('Error: ' + err.message, 'err');
+      console.error(err);
+    }
+  }
+
+  function showPreview({ data01, data02, data03, data04, data05, byEvent, bySource, dataUpd }) {
+    const wrap = document.getElementById('previewWrap');
+    wrap.className = 'preview-wrap visible';
+    wrap.innerHTML = '';
+
+    const sections = [
+      {
+        title: 'Sessions by Source/Medium',
+        headers: ['Source/Medium', 'Sessions', 'Eng. Sessions', 'Eng. Rate', 'First Visits', 'Bounce Rate'],
+        rows: data01 || [['Data not found']]
+      },
+      {
+        title: 'Sessions by Campaign (top 5)',
+        headers: ['Campaign', 'Sessions', 'Eng. Sessions', 'Eng. Rate', 'First Visits', 'Bounce Rate'],
+        rows: data02 || [['Data not found']]
+      },
+      {
+        title: "Users' Personal Interests (top 15)",
+        headers: ['Interest', 'Users', 'New Users', 'Eng. Sessions', 'Eng. Rate', 'Conversions'],
+        rows: data05 || [['Data not found']]
+      },
+      {
+        title: 'Conversions by Event',
+        headers: ['Event', 'Conversions'],
+        rows: byEvent ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : [['Data not found']]
+      },
+      {
+        title: 'Users Per Day (first 5)',
+        headers: ['Day', 'Active Users'],
+        rows: dataUpd ? dataUpd.slice(0, 5) : [['Data not found']]
+      },
+    ];
+
+    sections.forEach(section => {
+      const div = document.createElement('div');
+      div.className = 'preview-section';
+
+      const title = document.createElement('div');
+      title.className = 'preview-section-title';
+      title.textContent = section.title;
+      div.appendChild(title);
+
+      const tableWrap = document.createElement('div');
+      tableWrap.className = 'preview-table-wrap';
+
+      const table = document.createElement('table');
+      const thead = document.createElement('thead');
+      const tr = document.createElement('tr');
+      section.headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        tr.appendChild(th);
+      });
+      thead.appendChild(tr);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+      section.rows.forEach(row => {
+        const tr = document.createElement('tr');
+        row.forEach(cell => {
+          const td = document.createElement('td');
+          td.textContent = cell != null ? (typeof cell === 'number' ? cell.toFixed(2) : cell) : '';
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      div.appendChild(tableWrap);
+      wrap.appendChild(div);
+    });
+  }
+
+  function tick() { return new Promise(r => setTimeout(r, 15)); }
+</script>
+</body>
+</html>
