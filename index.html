@@ -580,20 +580,23 @@
     const lines = text.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'));
     if (!lines.length) return null;
 
-    // Look for the first header line
     for (const line of lines.slice(0, 15)) {
       if (line.startsWith('Session source / medium,')) return '01';
       if (line.startsWith('Session campaign,'))         return '02';
       if (line.startsWith('Segment,First Visit,'))      return '03';
-      if (line.startsWith('Segment,Google CPC,'))       return '04';
+      if (line.startsWith('Segment,Returning'))         return '03';
+      // 04: Segment row with any platform names (Google Organic, Google CPC, Facebook, etc.)
+      if (line.startsWith('Segment,') && /google|facebook|instagram/i.test(line)) return '04';
+      // 04: Page title header row (backup detection)
+      if (line.startsWith('Page title,'))               return '04';
       if (line.startsWith('Interests,Active users,'))   return '05';
-      if (line.startsWith('Event name,Campaign,'))      return '06';
-      if (line.startsWith('Nth day,Active users'))      return 'upd';
-      // Users_per_day has multiple sections — check for "Reports snapshot" comment
+      // 06: Event name is the anchor regardless of what columns follow
+      if (line.startsWith('Event name,'))               return '06';
+      if (/^nth.?day,active.?users/i.test(line))        return 'upd';
     }
 
-    // Users_per_day.csv special case — identified by # Reports snapshot comment
-    if (text.includes('# Reports snapshot') || text.includes('Nth day,Active users')) return 'upd';
+    // Users_per_day fallback via comment
+    if (text.includes('# Reports snapshot')) return 'upd';
 
     return null;
   }
@@ -763,216 +766,247 @@
 
   // ── Section parsers ────────────────────────────────
 
+  // Helper: build output row for source/medium sections
+  function srcRow(r) {
+    const sessions   = parseFloat(r[1]) || 0;
+    const firstVisit = parseFloat(r[4]) || 0;
+    const pct = sessions > 0 ? firstVisit / sessions : '';
+    return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), pct !== '' ? pct : ''];
+  }
+
+  // Helper: collect rows with supplement fallback
+  // Primary = passes all filters. Supplement = fails filters or threshold.
+  // If primary < maxRows, fill from supplement sorted by sessions desc.
+  function collectWithSupplement(rows, dataStart, excludePatterns, minSessions, maxRows) {
+    const primary = [], supplement = [];
+    for (let i = dataStart; i < rows.length; i++) {
+      const row = rows[i];
+      if (isFooter(row)) break;
+      const label    = (row[0] || '').trim();
+      const sessions = parseFloat(row[1]) || 0;
+      const excluded = excludePatterns.some(p => label.toLowerCase().includes(p));
+      if (!excluded && sessions >= minSessions) {
+        primary.push({ sessions, row });
+      } else {
+        supplement.push({ sessions, row });
+      }
+    }
+    primary.sort((a, b) => b.sessions - a.sessions);
+    supplement.sort((a, b) => b.sessions - a.sessions);
+    const result = primary.slice(0, maxRows);
+    let si = 0;
+    while (result.length < maxRows && si < supplement.length) {
+      result.push(supplement[si++]);
+    }
+    return result;
+  }
+
   // 01.csv — Sessions by Source/Medium
-  // Rules: top 5, min 1000 sessions, exclude bracketed/unavailable sources
   function parse01() {
     const rows = parseCSV(files['01'].text);
     const hIdx = findRow(rows, 'Session source / medium');
     if (hIdx === -1) return [];
     const dataStart = findDataStart(rows, hIdx);
-
-    const EXCLUDE_PATTERNS = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
-    const candidates = [];
-    for (let i = dataStart; i < rows.length; i++) {
-      const row = rows[i];
-      if (isFooter(row)) break;
-      const source = row[0].trim();
-      if (EXCLUDE_PATTERNS.some(p => source.toLowerCase().includes(p))) continue;
-      const sessions = parseFloat(row[1]) || 0;
-      if (sessions < 1000) continue;
-      candidates.push({ sessions, row });
-    }
-    candidates.sort((a, b) => b.sessions - a.sessions);
-    return candidates.slice(0, 5).map(({ row: r }) => {
-      const sessions   = parseFloat(r[1]) || 0;
-      const firstVisit = parseFloat(r[4]) || 0;
-      const pctFirst   = sessions > 0 ? firstVisit / sessions : '';
-      return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), pctFirst !== '' ? pctFirst : ''];
-    });
+    const EXCLUDE = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
+    const result = collectWithSupplement(rows, dataStart, EXCLUDE, 1000, 5);
+    return result.map(({ row: r }) => srcRow(r));
   }
 
   // 02.csv — Sessions by Campaign
-  // Rules: top 5, min 1000, exclude generic bracketed campaigns
   function parse02() {
     const rows = parseCSV(files['02'].text);
     const hIdx = findRow(rows, 'Session campaign');
     if (hIdx === -1) return [];
     const dataStart = findDataStart(rows, hIdx);
-
     const EXCLUDE = ['(referral)', '(organic)', '(direct)', '(cross-network)', '(not set)'];
-    const candidates = [];
-    for (let i = dataStart; i < rows.length; i++) {
-      const row = rows[i];
-      if (isFooter(row)) break;
-      const campaign = row[0].trim();
-      if (EXCLUDE.some(e => campaign.toLowerCase() === e.toLowerCase())) continue;
-      const sessions = parseFloat(row[1]) || 0;
-      if (sessions < 1000) continue;
-      candidates.push({ sessions, row });
-    }
-    candidates.sort((a, b) => b.sessions - a.sessions);
-    return candidates.slice(0, 5).map(({ row: r }) => {
-      const sessions   = parseFloat(r[1]) || 0;
-      const firstVisit = parseFloat(r[4]) || 0;
-      const pctFirst   = sessions > 0 ? firstVisit / sessions : '';
-      return [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), pctFirst !== '' ? pctFirst : ''];
-    });
+    const result = collectWithSupplement(rows, dataStart, EXCLUDE, 1000, 5);
+    return result.map(({ row: r }) => srcRow(r));
   }
 
-  // 03.csv — Site Visitors by Source/Medium (First Visit / Returning / Converters)
-  // Rules: top 5 by First Visit sessions, min 1000, exclude bracketed sources
+  // 03.csv — Site Visitors by Source/Medium
+  // Dynamically detects whether Converters columns exist
   function parse03() {
     const rows = parseCSV(files['03'].text);
     const hIdx = findRow(rows, 'Session source / medium');
-    if (hIdx === -1) return [];
+    if (hIdx === -1) return { rows: [], hasConverters: false, totalConverters: 0 };
 
-    // Grand total row is immediately after the header — col 7 = total converters sessions
-    const grandTotalRow = rows[hIdx + 1] || [];
-    const totalConverters = parseFloat(grandTotalRow[7]) || 0;
+    // Detect if Converters segment exists by scanning rows above the header
+    let hasConverters = false;
+    for (let i = Math.max(0, hIdx - 4); i < hIdx; i++) {
+      if (rows[i] && rows[i].some(c => c && /converters/i.test(c))) {
+        hasConverters = true; break;
+      }
+    }
+
+    // Find grand total row just after hIdx — extract total converters sessions dynamically
+    let totalConverters = 0;
+    for (let i = hIdx + 1; i < Math.min(hIdx + 5, rows.length); i++) {
+      if (isGrandTotal(rows[i])) {
+        if (hasConverters) {
+          // Converters sessions col: find first numeric value after col 6
+          const gt = rows[i];
+          for (let c = 6; c < gt.length; c++) {
+            if (gt[c] && !isNaN(parseFloat(gt[c]))) {
+              totalConverters = parseFloat(gt[c]) || 0;
+              break;
+            }
+          }
+        }
+        break;
+      }
+    }
 
     const dataStart = findDataStart(rows, hIdx);
+    const EXCLUDE = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
+    const result = collectWithSupplement(rows, dataStart, EXCLUDE, 1000, 5);
 
-    const EXCLUDE_PATTERNS = ['data not available', '(direct)', '(not set)', '(referral)', '(organic)', '(cross-network)'];
-    const candidates = [];
-    for (let i = dataStart; i < rows.length; i++) {
-      const row = rows[i];
-      if (isFooter(row)) break;
-      const source = row[0].trim();
-      if (EXCLUDE_PATTERNS.some(p => source.toLowerCase().includes(p))) continue;
-      const sessions = parseFloat(row[1]) || 0;
-      if (sessions < 1000) continue;
-      candidates.push({ sessions, row });
-    }
-    candidates.sort((a, b) => b.sessions - a.sessions);
-
-    return candidates.slice(0, 5).map(({ row: r }) => {
-      const convertersSessions = parseFloat(r[7]) || 0;
-      // Conversion rate = converters sessions / grand total converters (matches master formula)
-      const conversionRate = totalConverters > 0 ? convertersSessions / totalConverters : '';
-      return [
-        clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]),
-        clean(r[4]), clean(r[5]), clean(r[6]),
-        clean(r[7]), clean(r[8]),
-        conversionRate !== '' ? conversionRate : ''
-      ];
+    const outRows = result.map(({ row: r }) => {
+      const base = [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), clean(r[6])];
+      if (hasConverters) {
+        // Converters cols start after Returning cols (col 6) — find first numeric
+        let convSessions = '', convEngaged = '', convRate = '';
+        for (let c = 6; c < r.length; c++) {
+          if (r[c] && !isNaN(parseFloat(r[c]))) {
+            convSessions = clean(r[c]);
+            convEngaged  = clean(r[c + 1] || '');
+            const cs = parseFloat(r[c]) || 0;
+            convRate = totalConverters > 0 ? cs / totalConverters : '';
+            break;
+          }
+        }
+        base.push(convSessions, convEngaged, convRate !== '' ? convRate : '');
+      }
+      return base;
     });
+
+    return { rows: outRows, hasConverters, totalConverters };
   }
 
   // 04.csv — Platform Visitors by Page
-  // Rules: top 5 by Google CPC sessions (col 1), sorted descending
-  // Detects segment columns dynamically by reading the Segment header row
+  // Fully dynamic: reads Segment row to get platform labels and column structure
   function parse04() {
     const rows = parseCSV(files['04'].text);
     const hIdx = findRow(rows, 'Page title');
-    if (hIdx === -1) return [];
+    if (hIdx === -1) return { rows: [], colGroups: [], colLabelRow: [] };
 
-    // The Segment row is the one BEFORE "Page title" that contains platform names
-    // Find it by looking for the row with "Google CPC" or similar in its cols
+    // Find Segment row — first row above Page title that has non-empty cols after col 0
     let segRow = null;
-    for (let i = Math.max(0, hIdx - 3); i < hIdx; i++) {
-      if (rows[i] && rows[i].some(c => c && /google.?cpc|facebook|instagram/i.test(c))) {
+    for (let i = Math.max(0, hIdx - 4); i < hIdx; i++) {
+      if (rows[i] && rows[i].slice(1).some(c => c && c.trim() !== '')) {
         segRow = rows[i]; break;
       }
     }
 
-    // Build column groups dynamically from segRow if found
-    // Each group: { label, colStart }
-    let colGroups = null;
+    // Build column groups from segment row
+    const colGroups = [];
     if (segRow) {
-      colGroups = [];
       let curLabel = null, curStart = null;
       for (let c = 1; c < segRow.length; c++) {
         const v = (segRow[c] || '').trim();
         if (v && v !== curLabel) {
-          if (curLabel) colGroups.push({ label: curLabel, colStart: curStart });
+          if (curLabel !== null) colGroups.push({ label: curLabel, colStart: curStart, colEnd: c - 1 });
           curLabel = v; curStart = c;
         }
       }
-      if (curLabel) colGroups.push({ label: curLabel, colStart: curStart });
+      if (curLabel !== null) colGroups.push({ label: curLabel, colStart: curStart, colEnd: segRow.length - 1 });
     }
 
-    const dataStart = findDataStart(rows, hIdx);
+    // Merge adjacent Facebook/Instagram groups into one
+    const mergedGroups = [];
+    for (const g of colGroups) {
+      const isFB = /facebook|instagram/i.test(g.label);
+      if (isFB && mergedGroups.length && /facebook|instagram/i.test(mergedGroups[mergedGroups.length - 1].label)) {
+        mergedGroups[mergedGroups.length - 1].colEnd = g.colEnd;
+      } else {
+        mergedGroups.push({ ...g });
+      }
+    }
+
+    const colLabelRow = rows[hIdx] || [];
+    const dataStart   = findDataStart(rows, hIdx);
+    const totalCols   = colGroups.length > 0 ? colGroups[colGroups.length - 1].colEnd + 1 : 13;
+
     const candidates = [];
     for (let i = dataStart; i < rows.length; i++) {
       const row = rows[i];
       if (isFooter(row)) break;
-      const sessions = parseFloat(row[1]) || 0; // col 1 = first platform's sessions
-      candidates.push({ sessions, row });
+      candidates.push({ sessions: parseFloat(row[1]) || 0, row });
     }
     candidates.sort((a, b) => b.sessions - a.sessions);
 
-    return candidates.slice(0, 5).map(({ row: r }) =>
-      Array.from({ length: 13 }, (_, i) => clean(r[i] || ''))
+    const outRows = candidates.slice(0, 5).map(({ row: r }) =>
+      Array.from({ length: totalCols }, (_, i) => clean(r[i] || ''))
     );
+
+    return { rows: outRows, colGroups: mergedGroups, colLabelRow };
   }
 
-  // 05.csv — Users' Personal Interests
-  // Rules: always top 15 by active users
+  // 05.csv — Users Personal Interests (optional file)
   function parse05() {
+    if (!files['05']) return null; // file not uploaded
     const rows = parseCSV(files['05'].text);
     const hIdx = findRow(rows, 'Interests');
     if (hIdx === -1) return [];
     const dataStart = findDataStart(rows, hIdx);
-
     const candidates = [];
     for (let i = dataStart; i < rows.length; i++) {
       const row = rows[i];
       if (isFooter(row)) break;
-      const users = parseFloat(row[1]) || 0;
-      candidates.push({ users, row });
+      candidates.push({ users: parseFloat(row[1]) || 0, row });
     }
+    if (!candidates.length) return [];
     candidates.sort((a, b) => b.users - a.users);
     return candidates.slice(0, 15).map(({ row: r }) =>
       [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5])]
     );
   }
 
-  // 06.csv — Conversions by Event + by Source/Medium
-  // Link_Click_ events aggregated; all sources aggregated with case normalisation
-  // Grand total row detected dynamically rather than hardcoded skip
+  // 06.csv — Conversions by Event (+ optionally by Source/Medium)
+  // Format A (Myra):      Event name, Campaign, Source/medium, Key events  → aggregate by source too
+  // Format B (Celeteque): Event name, Sessions, Key events                 → no source aggregation
   function parse06() {
     const rows = parseCSV(files['06'].text);
     const hIdx = findRow(rows, 'Event name');
-    if (hIdx === -1) return { byEvent: [], bySource: [] };
-    const dataStart = findDataStart(rows, hIdx);
+    if (hIdx === -1) return { byEvent: [], bySource: null };
 
-    // Find which column index holds "Source / medium" and "Key events"
     const hRow = rows[hIdx] || [];
     const srcCol = hRow.findIndex(c => c && /source.*medium/i.test(c));
-    const valCol = hRow.findIndex(c => c && /key.?event/i.test(c));
-    const srcColFinal = srcCol !== -1 ? srcCol : 2;
-    const valColFinal = valCol !== -1 ? valCol : 3;
+    const isFormatA = srcCol !== -1;
 
-    const byEventMap = {};
+    // Value column: prefer Key events, then Sessions
+    let valCol = hRow.findIndex(c => c && /key.?event/i.test(c));
+    if (valCol === -1) valCol = hRow.findIndex(c => c && /^sessions$/i.test(c));
+    if (valCol === -1) valCol = 1;
+
+    const dataStart   = findDataStart(rows, hIdx);
+    const byEventMap  = {};
     const bySourceMap = {};
 
     for (let i = dataStart; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || (!row[0] && !row[srcColFinal])) continue;
+      if (!row || !row[0]) continue;
       const event  = (row[0] || '').trim();
-      const source = (row[srcColFinal] || '').trim();
-      const val    = parseFloat(row[valColFinal]) || 0;
-      if (!event && !source) continue;
+      const source = isFormatA ? (row[srcCol] || '').trim() : '';
+      const val    = parseFloat(row[valCol]) || 0;
+      if (!event) continue;
 
-      // Link_Click_ events — case-insensitive prefix match
-      if (event && event.toLowerCase().startsWith('link_click_')) {
+      if (event.toLowerCase().startsWith('link_click_')) {
         byEventMap[event] = (byEventMap[event] || 0) + val;
       }
 
-      // All sources — normalise Facebook / Social case variants
-      if (source) {
-        const normSource = source.toLowerCase() === 'facebook / social' ? 'Facebook / Social' : source;
-        bySourceMap[normSource] = (bySourceMap[normSource] || 0) + val;
+      if (isFormatA && source) {
+        const norm = source.toLowerCase() === 'facebook / social' ? 'Facebook / Social' : source;
+        bySourceMap[norm] = (bySourceMap[norm] || 0) + val;
       }
     }
 
     return {
       byEvent:  Object.entries(byEventMap).map(([k, v]) => [k, v]),
-      bySource: Object.entries(bySourceMap).map(([k, v]) => [k, v]),
+      bySource: isFormatA ? Object.entries(bySourceMap).map(([k, v]) => [k, v]) : null,
     };
   }
 
-  // Users per day — finds "Nth day,Active users" block dynamically, stops at next blank/comment
+    // Users per day — finds "Nth day,Active users" block dynamically, stops at next blank/comment
   function parseUpd() {
     const lines = files['upd'].text.split('\n');
     let inBlock = false;
@@ -1008,30 +1042,38 @@
     await tick();
 
     try {
-      const data01 = files['01'] ? parse01(monthNum) : null;
+      const data01   = files['01'] ? parse01() : null;
       setProgress(20, 'Sessions by Source/Medium...');  await tick();
-      const data02 = files['02'] ? parse02(monthNum) : null;
+      const data02   = files['02'] ? parse02() : null;
       setProgress(30, 'Sessions by Campaign...');       await tick();
-      const data03 = files['03'] ? parse03(monthNum) : null;
+      const res03    = files['03'] ? parse03() : null;
       setProgress(40, 'Site Visitors...');              await tick();
-      const data04 = files['04'] ? parse04(monthNum) : null;
+      const res04    = files['04'] ? parse04() : null;
       setProgress(50, 'Platform Visitors by Page...');  await tick();
-      const data05 = files['05'] ? parse05() : null;
+      const data05   = parse05(); // handles missing file internally
       setProgress(60, 'User Interests...');             await tick();
-      const conv   = files['06'] ? parse06() : null;
+      const conv     = files['06'] ? parse06() : null;
       const byEvent  = conv ? conv.byEvent  : null;
-      const bySource = conv ? conv.bySource : null;
+      const bySource = conv ? conv.bySource : null; // null means Format B — skip section
       setProgress(70, 'Conversions...');                await tick();
-      const dataUpd = files['upd'] ? parseUpd() : null;
+      const dataUpd  = files['upd'] ? parseUpd() : null;
       setProgress(80, 'Users Per Day...');              await tick();
 
-      // Build worksheet data (same layout as master file)
-      const wsData = [];
-      const addRow = (...cells) => wsData.push(cells.map(c => san(c)));
-      const addBlank = () => wsData.push([]);
+      // Unpack parse03 result
+      const data03        = res03 ? res03.rows       : null;
+      const hasConverters = res03 ? res03.hasConverters : false;
 
-      const NOT_FOUND = [['Data not found']];
+      // Unpack parse04 result
+      const data04     = res04 ? res04.rows      : null;
+      const colGroups  = res04 ? res04.colGroups : [];
+      const colLabels  = res04 ? res04.colLabelRow : [];
+
+      // Build worksheet data
+      const wsData = [];
       const san = (v) => (v === undefined || v === null || (typeof v === 'string' && v.toLowerCase() === 'nan')) ? '' : v;
+      const addRow   = (...cells) => wsData.push(cells.map(c => san(c)));
+      const addBlank = () => wsData.push([]);
+      const NOT_FOUND = [['Data not found']];
 
       // SESSIONS BY SOURCE/MEDIUM
       addRow('SESSIONS BY SOURCE/MEDIUM', 'Sessions', 'Engaged sessions', 'Engagement rate', 'First visits', 'Bounce rate', '% of First visits');
@@ -1043,31 +1085,67 @@
       (data02 || NOT_FOUND).forEach(r => addRow(...r));
       addBlank();
 
-      // SITE VISITORS BY SOURCE/MEDIUM
-      addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '', 'Converters', '', '');
-      addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Conversion Rate');
+      // SITE VISITORS BY SOURCE/MEDIUM — headers adapt to whether Converters exist
+      if (hasConverters) {
+        addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '', 'Converters', '', '');
+        addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Conversion Rate');
+      } else {
+        addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '');
+        addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate');
+      }
       (data03 || NOT_FOUND).forEach(r => addRow(...r));
       addBlank();
 
-      // PLATFORM VISITORS BY PAGE
-      addRow('PLATFORM VISITORS BY PAGE', 'Google CPC', '', '', '', 'FacebookInstagram', '', '', '', 'Google Organic', '', '', '');
-      addRow('Page title', 'Sessions', 'First visits', 'Returning users', 'Conversions', 'Sessions', 'First visits', 'Returning users', 'Conversions', 'Sessions', 'First visits', 'Returning users', 'Conversions');
-      (data04 || NOT_FOUND).forEach(r => addRow(...r));
+      // PLATFORM VISITORS BY PAGE — headers built dynamically from colGroups
+      if (data04 && colGroups.length > 0) {
+        // Build the segment label row
+        const segLabelRow = ['PLATFORM VISITORS BY PAGE'];
+        for (const g of colGroups) {
+          const width = g.colEnd - g.colStart + 1;
+          segLabelRow.push(g.label);
+          for (let i = 1; i < width; i++) segLabelRow.push('');
+        }
+        addRow(...segLabelRow);
+
+        // Build the column label row using colLabelRow from CSV
+        // colLabelRow[0] = "Page title", then per-group col labels repeat
+        const colHdrRow = ['Page title'];
+        for (const g of colGroups) {
+          for (let c = g.colStart; c <= g.colEnd; c++) {
+            colHdrRow.push(clean(colLabels[c] || ''));
+          }
+        }
+        addRow(...colHdrRow);
+        data04.forEach(r => addRow(...r));
+      } else {
+        addRow('PLATFORM VISITORS BY PAGE');
+        NOT_FOUND.forEach(r => addRow(...r));
+      }
       addBlank();
 
       // USERS' PERSONAL INTERESTS
       addRow("USERS' PERSONAL INTERESTS", 'Users', 'New users', 'Engaged sessions', 'Engagement rate', 'Conversions');
-      (data05 || NOT_FOUND).forEach(r => addRow(...r));
+      if (data05 === null) {
+        // File not uploaded
+        addRow('Data not found');
+      } else if (data05.length === 0) {
+        // File uploaded but no data
+        addRow('No demographic interests available');
+      } else {
+        data05.forEach(r => addRow(...r));
+      }
       addBlank();
 
       // CONVERSIONS BY EVENT
       addRow('CONVERSIONS BY EVENT', 'Conversions');
-      (byEvent ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
-      addBlank();
+      (byEvent && byEvent.length ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
 
-      // CONVERSIONS BY SOURCE/MEDIUM
-      addRow('CONVERSIONS BY SOURCE/MEDIUM', 'Conversions');
-      (bySource ? bySource.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
+      // CONVERSIONS BY SOURCE/MEDIUM — only for Format A exports
+      if (bySource !== null) {
+        addBlank();
+        addRow('CONVERSIONS BY SOURCE/MEDIUM', 'Conversions');
+        (bySource.length ? bySource.sort((a,b) => a[0].localeCompare(b[0])) : NOT_FOUND).forEach(r => addRow(...r));
+      }
 
       setProgress(90, 'Building Excel file...'); await tick();
 
@@ -1098,7 +1176,7 @@
         : `Done — ${monthLabel} sheet + Users Per Day ready.`;
       setStatus(statusMsg, missing.length ? '' : 'ok');
 
-      showPreview({ data01, data02, data03, data04, data05, byEvent, bySource, dataUpd });
+      showPreview({ data01, data02, data03, data05, byEvent, dataUpd });
 
     } catch (err) {
       setStatus('Error: ' + err.message, 'err');
@@ -1106,10 +1184,14 @@
     }
   }
 
-  function showPreview({ data01, data02, data03, data04, data05, byEvent, bySource, dataUpd }) {
+  function showPreview({ data01, data02, data03, data05, byEvent, dataUpd }) {
     const wrap = document.getElementById('previewWrap');
     wrap.className = 'preview-wrap visible';
     wrap.innerHTML = '';
+
+    const interestsRows = data05 === null ? [['Data not found']]
+      : data05.length === 0 ? [['No demographic interests available']]
+      : data05;
 
     const sections = [
       {
@@ -1125,12 +1207,12 @@
       {
         title: "Users' Personal Interests (top 15)",
         headers: ['Interest', 'Users', 'New Users', 'Eng. Sessions', 'Eng. Rate', 'Conversions'],
-        rows: data05 || [['Data not found']]
+        rows: interestsRows
       },
       {
         title: 'Conversions by Event',
         headers: ['Event', 'Conversions'],
-        rows: byEvent ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : [['Data not found']]
+        rows: byEvent && byEvent.length ? byEvent.sort((a,b) => a[0].localeCompare(b[0])) : [['Data not found']]
       },
       {
         title: 'Users Per Day (first 5)',
