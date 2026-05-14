@@ -806,6 +806,7 @@
   }
 
   // 01.csv — Sessions by Source/Medium
+  // Top 5, min 1000, exclude bracketed/unavailable. Supplement with lower rows if < 5 pass.
   function parse01() {
     const rows = parseCSV(files['01'].text);
     const hIdx = findRow(rows, 'Session source / medium');
@@ -1008,7 +1009,8 @@
       'click','view_search_results','window_loaded','window loaded',
       'page_timer(30s)','section_display','click_accept','gtm.js',
       'outbound_click','file_download','video_start','video_complete',
-      'video_progress','form_submit','exception','timing_complete'
+      'video_progress','form_submit','exception','timing_complete',
+      'shop_button_clicks'
     ]);
 
     const byEventMap  = {};
