@@ -913,17 +913,18 @@
       }
     }
 
-    // Filter out column groups where grand total sessions < 1000
-    // Find grand total row dynamically
+    // Filter out column groups with zero sessions in grand total (truly empty segments)
+    // Do NOT apply a 1000 session threshold here — platform segments like Google Organic
+    // with fewer sessions are still included in the master
     let gtRow = null;
     for (let i = hIdx + 1; i < Math.min(hIdx + 5, rows.length); i++) {
       if (isGrandTotal(rows[i])) { gtRow = rows[i]; break; }
     }
 
     const filteredGroups = mergedGroups.filter(g => {
-      if (!gtRow) return true; // no grand total found — include all
+      if (!gtRow) return true;
       const sessions = parseFloat(gtRow[g.colStart]) || 0;
-      return sessions >= 1000;
+      return sessions >= 100; // exclude negligible segments (< 100 total sessions)
     });
 
     const colLabelRow = rows[hIdx] || [];
@@ -936,9 +937,10 @@
     for (let i = dataStart; i < rows.length; i++) {
       const row = rows[i];
       if (isFooter(row)) break;
-      candidates.push({ sessions: parseFloat(row[1]) || 0, row });
+      candidates.push({ sessions: parseFloat(row[1]) || 0, row, idx: i });
     }
-    candidates.sort((a, b) => b.sessions - a.sessions);
+    // Stable sort: sort by sessions desc, preserve original order for ties
+    candidates.sort((a, b) => b.sessions !== a.sessions ? b.sessions - a.sessions : a.idx - b.idx);
 
     // Only extract columns belonging to filtered groups
     // Keep only: Sessions, First visits, Returning users, Conversions (drop e.g. Average session duration)
