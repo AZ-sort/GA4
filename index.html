@@ -626,6 +626,10 @@
   fileInput.addEventListener('change', () => handleFiles(fileInput.files));
 
   function handleFiles(fileList) {
+    // Clear all existing files when a new batch is dropped
+    // so Myra data doesn't bleed into a Celeteque run
+    REQUIRED.forEach(k => delete files[k]);
+
     Array.from(fileList).forEach(file => {
       if (!file.name.endsWith('.csv')) return;
       const reader = new FileReader();
@@ -838,19 +842,13 @@
       }
     }
 
-    // Find grand total row just after hIdx — extract total converters sessions dynamically
+    // Grand total row: read totalConverters directly from col 7
     let totalConverters = 0;
     for (let i = hIdx + 1; i < Math.min(hIdx + 5, rows.length); i++) {
       if (isGrandTotal(rows[i])) {
         if (hasConverters) {
-          // Converters sessions col: find first numeric value after col 6
-          const gt = rows[i];
-          for (let c = 6; c < gt.length; c++) {
-            if (gt[c] && !isNaN(parseFloat(gt[c]))) {
-              totalConverters = parseFloat(gt[c]) || 0;
-              break;
-            }
-          }
+          // Converters Sessions is always col 7 in this format
+          totalConverters = parseFloat(rows[i][7]) || 0;
         }
         break;
       }
@@ -863,18 +861,10 @@
     const outRows = result.map(({ row: r }) => {
       const base = [clean(r[0]), clean(r[1]), clean(r[2]), clean(r[3]), clean(r[4]), clean(r[5]), clean(r[6])];
       if (hasConverters) {
-        // Converters cols start after Returning cols (col 6) — find first numeric
-        let convSessions = '', convEngaged = '', convRate = '';
-        for (let c = 6; c < r.length; c++) {
-          if (r[c] && !isNaN(parseFloat(r[c]))) {
-            convSessions = clean(r[c]);
-            convEngaged  = clean(r[c + 1] || '');
-            const cs = parseFloat(r[c]) || 0;
-            convRate = totalConverters > 0 ? cs / totalConverters : '';
-            break;
-          }
-        }
-        base.push(convSessions, convEngaged, convRate !== '' ? convRate : '');
+        // Output Converters: Sessions (col 7), Engaged sessions (col 8), Engagement rate (col 9)
+        // Note: col 9 from the CSV is engagement rate (usually 1.0 for converters)
+        // Some masters replace this with a computed conversion rate — left for manual adjustment
+        base.push(clean(r[7] || ''), clean(r[8] || ''), clean(r[9] || ''));
       }
       return base;
     });
@@ -922,9 +912,24 @@
       }
     }
 
+    // Filter out column groups where grand total sessions < 1000
+    // Find grand total row dynamically
+    let gtRow = null;
+    for (let i = hIdx + 1; i < Math.min(hIdx + 5, rows.length); i++) {
+      if (isGrandTotal(rows[i])) { gtRow = rows[i]; break; }
+    }
+
+    const filteredGroups = mergedGroups.filter(g => {
+      if (!gtRow) return true; // no grand total found — include all
+      const sessions = parseFloat(gtRow[g.colStart]) || 0;
+      return sessions >= 1000;
+    });
+
     const colLabelRow = rows[hIdx] || [];
     const dataStart   = findDataStart(rows, hIdx);
-    const totalCols   = colGroups.length > 0 ? colGroups[colGroups.length - 1].colEnd + 1 : 13;
+    const totalCols   = filteredGroups.length > 0
+      ? filteredGroups[filteredGroups.length - 1].colEnd + 1
+      : (colGroups.length > 0 ? colGroups[colGroups.length - 1].colEnd + 1 : 13);
 
     const candidates = [];
     for (let i = dataStart; i < rows.length; i++) {
@@ -934,11 +939,24 @@
     }
     candidates.sort((a, b) => b.sessions - a.sessions);
 
-    const outRows = candidates.slice(0, 5).map(({ row: r }) =>
-      Array.from({ length: totalCols }, (_, i) => clean(r[i] || ''))
-    );
+    // Only extract columns belonging to filtered groups
+    // Keep only: Sessions, First visits, Returning users, Conversions (drop e.g. Average session duration)
+    const KEEP_COLS = /^(sessions|first visits?|returning users?|conversions?|key events?)$/i;
 
-    return { rows: outRows, colGroups: mergedGroups, colLabelRow };
+    const outRows = candidates.slice(0, 5).map(({ row: r }) => {
+      const out = [clean(r[0] || '')];
+      for (const g of filteredGroups) {
+        for (let c = g.colStart; c <= g.colEnd; c++) {
+          const colLabel = (colLabelRow[c] || '').trim();
+          if (KEEP_COLS.test(colLabel)) {
+            out.push(clean(r[c] || ''));
+          }
+        }
+      }
+      return out;
+    });
+
+    return { rows: outRows, colGroups: filteredGroups, colLabelRow };
   }
 
   // 05.csv — Users Personal Interests (optional file)
@@ -973,24 +991,39 @@
     const srcCol = hRow.findIndex(c => c && /source.*medium/i.test(c));
     const isFormatA = srcCol !== -1;
 
-    // Value column: prefer Key events, then Sessions
-    let valCol = hRow.findIndex(c => c && /key.?event/i.test(c));
-    if (valCol === -1) valCol = hRow.findIndex(c => c && /^sessions$/i.test(c));
-    if (valCol === -1) valCol = 1;
+    // Format A: use Key events col. Format B: use Sessions col (Key events is always 0 in Celeteque format)
+    let valCol;
+    if (isFormatA) {
+      valCol = hRow.findIndex(c => c && /key.?event/i.test(c));
+      if (valCol === -1) valCol = 3;
+    } else {
+      // Format B: Sessions is col 1
+      valCol = hRow.findIndex(c => c && /^sessions$/i.test(c));
+      if (valCol === -1) valCol = 1;
+    }
 
-    const dataStart   = findDataStart(rows, hIdx);
+    // GA4 system/generic events to exclude — include everything else as a custom conversion event
+    const GA4_SYSTEM = new Set([
+      'page_view','session_start','first_visit','user_engagement','scroll',
+      'click','view_search_results','window_loaded','window loaded',
+      'page_timer(30s)','section_display','click_accept','gtm.js',
+      'outbound_click','file_download','video_start','video_complete',
+      'video_progress','form_submit','exception','timing_complete'
+    ]);
+
     const byEventMap  = {};
     const bySourceMap = {};
 
-    for (let i = dataStart; i < rows.length; i++) {
+    for (let i = hIdx + 1; i < rows.length; i++) {
       const row = rows[i];
-      if (!row || !row[0]) continue;
-      const event  = (row[0] || '').trim();
+      if (!row) continue;
+      const event = (row[0] || '').trim();
+      if (!event) continue; // skip grand total / blank rows
       const source = isFormatA ? (row[srcCol] || '').trim() : '';
       const val    = parseFloat(row[valCol]) || 0;
-      if (!event) continue;
 
-      if (event.toLowerCase().startsWith('link_click_')) {
+      // Include custom conversion events — exclude known GA4 system events
+      if (event && !GA4_SYSTEM.has(event.toLowerCase())) {
         byEventMap[event] = (byEventMap[event] || 0) + val;
       }
 
@@ -1088,7 +1121,8 @@
       // SITE VISITORS BY SOURCE/MEDIUM — headers adapt to whether Converters exist
       if (hasConverters) {
         addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '', 'Converters', '', '');
-        addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Conversion Rate');
+        const rateLabel = 'Engagement rate';
+        addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', rateLabel);
       } else {
         addRow('SITE VISITORS BY SOURCE/MEDIUM', 'First Visit', '', '', 'Returning Visitor', '', '');
         addRow('', 'Sessions', 'Engaged sessions', 'Engagement rate', 'Sessions', 'Engaged sessions', 'Engagement rate');
@@ -1100,19 +1134,28 @@
       if (data04 && colGroups.length > 0) {
         // Build the segment label row
         const segLabelRow = ['PLATFORM VISITORS BY PAGE'];
+        const KEEP_COLS_SEG = /^(sessions|first visits?|returning users?|conversions?|key events?)$/i;
         for (const g of colGroups) {
-          const width = g.colEnd - g.colStart + 1;
-          segLabelRow.push(g.label);
-          for (let i = 1; i < width; i++) segLabelRow.push('');
+          let keptCount = 0;
+          for (let c = g.colStart; c <= g.colEnd; c++) {
+            if (KEEP_COLS_SEG.test((colLabels[c] || '').trim())) keptCount++;
+          }
+          if (keptCount > 0) {
+            segLabelRow.push(g.label);
+            for (let i = 1; i < keptCount; i++) segLabelRow.push('');
+          }
         }
         addRow(...segLabelRow);
 
-        // Build the column label row using colLabelRow from CSV
-        // colLabelRow[0] = "Page title", then per-group col labels repeat
+        // Build the column label row — only keep Sessions, First visits, Returning users, Conversions
+        const KEEP_COLS = /^(sessions|first visits?|returning users?|conversions?|key events?)$/i;
         const colHdrRow = ['Page title'];
         for (const g of colGroups) {
           for (let c = g.colStart; c <= g.colEnd; c++) {
-            colHdrRow.push(clean(colLabels[c] || ''));
+            const lbl = (colLabels[c] || '').trim();
+            if (KEEP_COLS.test(lbl)) {
+              colHdrRow.push(lbl.toLowerCase() === 'key events' ? 'Conversions' : lbl);
+            }
           }
         }
         addRow(...colHdrRow);
@@ -1162,7 +1205,21 @@
       wsUpd['!cols'] = [{ wch: 8 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, wsUpd, 'Users Per Day');
 
-      setProgress(100, 'Done');
+      // Manual Review sheet
+      const reviewNotes = [
+        ['MANUAL REVIEW CHECKLIST', ''],
+        ['Item', 'Notes'],
+        ['Platform Visitors — Conversions column', 'Values sourced from "Key events" in the CSV. Verify these match your expected conversions and zero out any that are not true conversions.'],
+        ['Site Visitors — Converters Engagement rate', 'Some brands replace this with a computed Conversion Rate (converters / total converters). Check if your master file expects Engagement rate or Conversion Rate here.'],
+        ['Sessions by Source/Medium — supplement rows', 'If fewer than 5 rows had 1,000+ sessions, lower-traffic sources were included as supplements. Review for relevance.'],
+        ['Sessions by Campaign — supplement rows', 'Same supplement rule applies. Bracketed campaigns like (organic) or (direct) may appear if no real campaigns qualified.'],
+        ['Conversions by Event', 'Parser includes all non-system events. Review that only intended conversion events are listed.'],
+        ['Conversions by Source/Medium', 'Only appears for exports with Campaign + Source/Medium columns (Format A). Not shown for simpler exports.'],
+        ['% of First Visits', 'Computed as First Visits / Sessions. Verify formula matches your master.'],
+      ];
+      const wsReview = XLSX.utils.aoa_to_sheet(reviewNotes);
+      wsReview['!cols'] = [{ wch: 45 }, { wch: 90 }];
+      XLSX.utils.book_append_sheet(wb, wsReview, 'Manual Review');
 
       const blob = new Blob([XLSX.write(wb, { bookType: 'xlsx', type: 'array' })], { type: 'application/octet-stream' });
       const dlBtn = document.getElementById('dlBtn');
